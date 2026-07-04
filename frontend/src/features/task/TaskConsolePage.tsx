@@ -19,6 +19,7 @@ import {
   listDocuments,
   listKnowledgeGraphs,
   listTasks,
+  listWrongQuestions,
   listWorksheetAttempts,
   listWorksheetWrongQuestions,
   register,
@@ -51,6 +52,7 @@ import { AuthPage } from "./pages/AuthPage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { ProfilePage } from "./pages/ProfilePage";
+import { WrongQuestionsPage } from "./pages/WrongQuestionsPage";
 import { WorkspacePage } from "./pages/WorkspacePage";
 import { WorksheetStudioPage } from "./pages/WorksheetStudioPage";
 
@@ -98,8 +100,13 @@ export function TaskConsolePage() {
   const [worksheet, setWorksheet] = useState<WorksheetDetail | null>(null);
   const [worksheetAttempts, setWorksheetAttempts] = useState<WorksheetAttemptResponse[]>([]);
   const [wrongQuestions, setWrongQuestions] = useState<WrongQuestion[]>([]);
+  const [wrongQuestionBank, setWrongQuestionBank] = useState<WrongQuestion[]>([]);
   const [isLoadingWrongQuestions, setIsLoadingWrongQuestions] = useState(false);
+  const [isLoadingWrongQuestionBank, setIsLoadingWrongQuestionBank] = useState(false);
   const [wrongQuestionError, setWrongQuestionError] = useState<string | null>(null);
+  const [wrongQuestionBankError, setWrongQuestionBankError] = useState<string | null>(null);
+  const [wrongQuestionRetryError, setWrongQuestionRetryError] = useState<string | null>(null);
+  const [wrongQuestionRetryTitle, setWrongQuestionRetryTitle] = useState("错题再练");
   const [worksheetError, setWorksheetError] = useState<string | null>(null);
   const [isGeneratingWorksheet, setIsGeneratingWorksheet] = useState(false);
   const [isExportingWorksheet, setIsExportingWorksheet] = useState(false);
@@ -129,6 +136,12 @@ export function TaskConsolePage() {
       setWrongQuestionError(null);
     }
   }, [session, worksheet?.id]);
+
+  useEffect(() => {
+    if (session && activeView === "wrong-questions") {
+      void refreshWrongQuestionBank(session);
+    }
+  }, [session, activeView]);
 
   useEffect(() => {
     if (knowledgeGraphRecords.length === 0) {
@@ -332,6 +345,7 @@ export function TaskConsolePage() {
     }
     setIsRetryingWrongQuestions(true);
     setWrongQuestionError(null);
+    setWrongQuestionRetryError(null);
     try {
       const created = await retryWrongQuestions(session, wrongQuestionIds, title);
       appendLine(`错题再练已创建 ${created.worksheetId}`, "success", "错题");
@@ -339,11 +353,14 @@ export function TaskConsolePage() {
       setWorksheet(null);
       setWorksheetAttempts([]);
       setWrongQuestions([]);
+      void refreshWrongQuestionBank(session);
       const detail = await getWorksheet(session, created.worksheetId);
       setWorksheet(detail);
+      setActiveView("worksheet");
     } catch (error) {
       const message = error instanceof Error ? error.message : "错题再练失败";
       setWrongQuestionError(message);
+      setWrongQuestionRetryError(message);
       appendLine(message, "error");
     } finally {
       setIsRetryingWrongQuestions(false);
@@ -351,13 +368,17 @@ export function TaskConsolePage() {
   }
 
   async function handleResolveWrongQuestion(wrongQuestionId: string) {
-    if (!session || !worksheet) {
+    if (!session) {
       return;
     }
     setWrongQuestionError(null);
     try {
       await resolveWrongQuestion(session, wrongQuestionId);
-      void refreshWrongQuestions(session, worksheet.id);
+      if (worksheet) {
+        await refreshWrongQuestions(session, worksheet.id);
+      }
+      setWrongQuestionBank((current) => current.filter((item) => item.id !== wrongQuestionId));
+      await refreshWrongQuestionBank(session);
       appendLine("错题已标记为已解决", "success", "错题");
     } catch (error) {
       const message = error instanceof Error ? error.message : "标记错题失败";
@@ -404,7 +425,11 @@ export function TaskConsolePage() {
     setSelectedKnowledgeGraphRecordId(null);
     setKnowledgeGraphError(null);
     setWrongQuestions([]);
+    setWrongQuestionBank([]);
     setWrongQuestionError(null);
+    setWrongQuestionBankError(null);
+    setWrongQuestionRetryError(null);
+    setWrongQuestionRetryTitle("错题再练");
     setLines([]);
     setWorksheet(null);
     setWorksheetAttempts([]);
@@ -554,6 +579,7 @@ export function TaskConsolePage() {
       if (selectedKnowledgeGraphRecordId === graphId) {
         setSelectedKnowledgeGraphRecordId(null);
       }
+      await refreshKnowledgeGraphRecords(session);
       appendLine(`图谱记录已删除 ${graphId}`, "success", "图谱");
     } catch (error) {
       setKnowledgeGraphRecordsError(error instanceof Error ? error.message : "删除图谱记录失败");
@@ -576,6 +602,18 @@ export function TaskConsolePage() {
     }
   }
 
+  async function refreshWrongQuestionBank(currentSession: AuthSession) {
+    setIsLoadingWrongQuestionBank(true);
+    setWrongQuestionBankError(null);
+    try {
+      setWrongQuestionBank(await listWrongQuestions(currentSession));
+    } catch (error) {
+      setWrongQuestionBankError(error instanceof Error ? error.message : "加载错题本失败");
+    } finally {
+      setIsLoadingWrongQuestionBank(false);
+    }
+  }
+
   function mergeDocuments(nextDocuments: EduDocument[]) {
     setDocuments((current) => {
       const byId = new Map(current.map((document) => [document.id, document]));
@@ -594,6 +632,9 @@ export function TaskConsolePage() {
     try {
       await deleteDocument(session, documentId);
       setDocuments((current) => current.filter((document) => document.id !== documentId));
+      await refreshDocuments(session);
+      void refreshKnowledgeGraph(session);
+      await refreshKnowledgeGraphRecords(session);
     } catch (error) {
       setDocumentsError(error instanceof Error ? error.message : "删除资料失败");
     }
@@ -665,9 +706,15 @@ export function TaskConsolePage() {
           artifactCount={artifacts.length}
           knowledgeGraphCount={knowledgeGraphRecords.length}
           activeTaskId={activeTaskId}
+          selectedKnowledgeGraphRecordId={selectedKnowledgeGraphRecordId}
           canSaveKnowledgeGraph={documents.length > 0 && Boolean(session)}
           onOpenKnowledgeGraph={() => setActiveView("knowledge-graph")}
           onSaveKnowledgeGraph={handleCreateKnowledgeGraphRecord}
+          onDeleteKnowledgeGraph={() => {
+            if (selectedKnowledgeGraphRecordId) {
+              void handleDeleteKnowledgeGraphRecord(selectedKnowledgeGraphRecordId);
+            }
+          }}
         >
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1.05fr)_minmax(320px,0.95fr)]">
             <div className="space-y-5">
@@ -846,18 +893,22 @@ export function TaskConsolePage() {
           </div>
         </WorksheetStudioPage>
       ) : activeView === "wrong-questions" ? (
-        <section className="space-y-5">
-          <div className="space-y-2">
-            <p className="page-intro__eyebrow">练习</p>
-            <h2 className="page-intro__title">错题本</h2>
-            <p className="page-intro__description">这里后续会展示错题列表、重练入口和统计信息。</p>
-          </div>
-          <GlassPanel className="p-4">
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              占位视图已就绪，Task 3 会在这里接入错题数据与操作。
-            </p>
-          </GlassPanel>
-        </section>
+        <WrongQuestionsPage
+          wrongQuestions={wrongQuestionBank}
+          isLoading={isLoadingWrongQuestionBank}
+          error={wrongQuestionBankError}
+          retryError={wrongQuestionRetryError}
+          retryTitle={wrongQuestionRetryTitle}
+          isRetrying={isRetryingWrongQuestions}
+          onRefresh={() => {
+            if (session) {
+              void refreshWrongQuestionBank(session);
+            }
+          }}
+          onRetryTitleChange={setWrongQuestionRetryTitle}
+          onRetry={handleRetryWrongQuestions}
+          onResolve={handleResolveWrongQuestion}
+        />
       ) : activeView === "history" ? (
         <HistoryPage>
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,0.9fr)]">

@@ -1,0 +1,1 @@
+Fractions with same denominators can be added.

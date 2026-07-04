@@ -17,6 +17,30 @@ class FakeEventSource {
 }
 
 const mockState = {
+  documents: [] as Array<{
+    id: string;
+    userId: string;
+    fileName: string;
+    mimeType: string;
+    extractedText: string;
+    textPreview: string;
+    parseStatus: string;
+    createdAt: string;
+  }>,
+  knowledgeGraphs: [] as Array<{
+    id: string;
+    userId: string;
+    title: string;
+    documentIds: string[];
+    graphJson: {
+      nodes: Array<{ id: string; label: string; type: string; weight: number }>;
+      edges: Array<{ source: string; target: string; label: string; weight: number }>;
+    };
+    status: string;
+    taskId: string;
+    createdAt: string;
+    updatedAt: string;
+  }>,
   wrongQuestions: [] as Array<{
     id: string;
     worksheetId: string;
@@ -54,6 +78,37 @@ describe("TaskConsolePage", () => {
   beforeEach(() => {
     localStorageMock.clear();
     FakeEventSource.instances = [];
+    mockState.documents = [
+      {
+        id: "existing-document",
+        userId: "user-1",
+        fileName: "existing.txt",
+        mimeType: "text/plain",
+        extractedText: "Existing parsed material.",
+        textPreview: "Existing parsed material.",
+        parseStatus: "PARSED",
+        createdAt: "2026-07-03T00:00:00"
+      }
+    ];
+    mockState.knowledgeGraphs = [
+      {
+        id: "graph-1",
+        userId: "user-1",
+        title: "当前图谱快照",
+        documentIds: ["document-1"],
+        graphJson: {
+          nodes: [
+            { id: "doc:document-1", label: "lesson.txt", type: "document", weight: 1 },
+            { id: "term:分数加减法", label: "分数加减法", type: "concept", weight: 2 }
+          ],
+          edges: [{ source: "doc:document-1", target: "term:分数加减法", label: "contains", weight: 2 }]
+        },
+        status: "COMPLETED",
+        taskId: "task-graph-1",
+        createdAt: "2026-07-03T00:00:00",
+        updatedAt: "2026-07-03T00:00:00"
+      }
+    ];
     mockState.wrongQuestions = [];
     vi.stubGlobal("EventSource", FakeEventSource);
     vi.stubGlobal("localStorage", localStorageMock);
@@ -170,6 +225,9 @@ describe("TaskConsolePage", () => {
     expect(await screen.findByText("existing.txt")).toBeInTheDocument();
     expect(screen.getByText("Existing parsed material.")).toBeInTheDocument();
 
+    const initialDocumentListCalls = countFetchCalls(
+      "http://localhost:8080/api/users/user-1/documents"
+    );
     await userEvent.click(screen.getByRole("button", { name: "删除 existing.txt" }));
 
     await waitFor(() => {
@@ -179,6 +237,9 @@ describe("TaskConsolePage", () => {
           method: "DELETE",
           headers: expect.objectContaining({ Authorization: "Bearer token-1" })
         })
+      );
+      expect(countFetchCalls("http://localhost:8080/api/users/user-1/documents")).toBeGreaterThan(
+        initialDocumentListCalls
       );
     });
   });
@@ -362,6 +423,23 @@ describe("TaskConsolePage", () => {
     render(<TaskConsolePage />);
 
     await login();
+    mockState.wrongQuestions = [
+      {
+        id: "wrong-1",
+        worksheetId: "worksheet-1",
+        attemptId: "attempt-1",
+        questionId: "question-1",
+        questionStem: "同分母分数相加时，分母应该如何处理？",
+        submittedAnswer: "B",
+        correctAnswer: "A",
+        explanation: "同分母分数加法中分母保持不变。",
+        weaknessTag: "Needs review: 同分母分数相加时，分母应该如何处理？",
+        retryWorksheetId: null,
+        resolved: false,
+        createdAt: "2026-07-03T00:00:00",
+        updatedAt: "2026-07-03T00:00:00"
+      }
+    ];
 
     expect(screen.getByRole("heading", { name: "工作台首页" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "历史与回放" })).not.toBeInTheDocument();
@@ -384,7 +462,16 @@ describe("TaskConsolePage", () => {
     expect(screen.getByText("teacher")).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "错题本" }));
-    expect(screen.getByRole("heading", { name: "错题本" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "错题本" })).toBeInTheDocument();
+    expect(screen.getByText("同分母分数相加时，分母应该如何处理？")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        "http://localhost:8080/api/users/user-1/wrong-questions",
+        expect.objectContaining({
+          headers: expect.objectContaining({ Authorization: "Bearer token-1" })
+        })
+      );
+    });
   });
 
   it("shows a workspace overview strip on the home dashboard", async () => {
@@ -397,6 +484,66 @@ describe("TaskConsolePage", () => {
     expect(screen.getByText("当前资料")).toBeInTheDocument();
     expect(screen.getByText("图谱快照")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "查看图谱" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "删除快照" })).toBeInTheDocument();
+
+    const initialKnowledgeGraphListCalls = countFetchCalls(
+      "http://localhost:8080/api/users/user-1/knowledge-graphs"
+    );
+    await userEvent.click(screen.getByRole("button", { name: "删除快照" }));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        "http://localhost:8080/api/users/user-1/knowledge-graphs/graph-1",
+        expect.objectContaining({
+          method: "DELETE",
+          headers: expect.objectContaining({ Authorization: "Bearer token-1" })
+        })
+      );
+      expect(countFetchCalls("http://localhost:8080/api/users/user-1/knowledge-graphs")).toBeGreaterThan(
+        initialKnowledgeGraphListCalls
+      );
+    });
+  });
+
+  it("refreshes the wrong-question bank after deleting a mastered question", async () => {
+    render(<TaskConsolePage />);
+
+    await login();
+    await userEvent.upload(
+      screen.getByLabelText("参考资料"),
+      new File(["课堂材料：分数加减法。"], "fraction.txt", { type: "text/plain" })
+    );
+    await userEvent.clear(screen.getByLabelText("练习标题"));
+    await userEvent.type(screen.getByLabelText("练习标题"), "分数练习");
+    await userEvent.click(screen.getByRole("button", { name: "生成练习卷" }));
+
+    await screen.findByText("题目预览");
+    await userEvent.click(screen.getByLabelText("A. 分母不变"));
+    await userEvent.click(screen.getByRole("button", { name: "提交批改" }));
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        "http://localhost:8080/api/users/user-1/worksheets/worksheet-1/attempts",
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({ Authorization: "Bearer token-1" })
+        })
+      )
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "错题" }));
+    expect(await screen.findByText("同分母分数相加时，分母应该如何处理？")).toBeInTheDocument();
+
+    const initialWrongQuestionBankCalls = countFetchCalls(
+      "http://localhost:8080/api/users/user-1/wrong-questions"
+    );
+    await userEvent.click(screen.getByRole("button", { name: "标记已掌握" }));
+
+    await waitFor(() => {
+      expect(countFetchCalls("http://localhost:8080/api/users/user-1/wrong-questions")).toBeGreaterThan(
+        initialWrongQuestionBankCalls
+      );
+    });
   });
 
   it("shows worksheet studio tabs and intro after switching views", async () => {
@@ -470,18 +617,7 @@ async function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
     return jsonResponse({ userId: "user-1", username: "teacher", token: "token-1" });
   }
   if (url.endsWith("/api/users/user-1/documents") && init?.method !== "POST") {
-    return jsonResponse([
-      {
-        id: "existing-document",
-        userId: "user-1",
-        fileName: "existing.txt",
-        mimeType: "text/plain",
-        extractedText: "Existing parsed material.",
-        textPreview: "Existing parsed material.",
-        parseStatus: "PARSED",
-        createdAt: "2026-07-03T00:00:00"
-      }
-    ]);
+    return jsonResponse(mockState.documents);
   }
   if (url.endsWith("/api/users/user-1/knowledge-graph?limit=12")) {
     return jsonResponse({
@@ -493,33 +629,17 @@ async function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
     });
   }
   if (url.endsWith("/api/users/user-1/knowledge-graphs") && init?.method !== "POST") {
-    return jsonResponse([
-      {
-        id: "graph-1",
-        userId: "user-1",
-        title: "当前图谱快照",
-        documentIds: ["document-1"],
-        graphJson: {
-          nodes: [
-            { id: "doc:document-1", label: "lesson.txt", type: "document", weight: 1 },
-            { id: "term:分数加减法", label: "分数加减法", type: "concept", weight: 2 }
-          ],
-          edges: [{ source: "doc:document-1", target: "term:分数加减法", label: "contains", weight: 2 }]
-        },
-        status: "COMPLETED",
-        taskId: "task-graph-1",
-        createdAt: "2026-07-03T00:00:00",
-        updatedAt: "2026-07-03T00:00:00"
-      }
-    ]);
+    return jsonResponse(mockState.knowledgeGraphs);
   }
   if (url.endsWith("/api/users/user-1/knowledge-graphs") && init?.method === "POST") {
     return jsonResponse({ graphId: "graph-2", taskId: "task-graph-2", status: "PENDING" });
   }
   if (url.endsWith("/api/users/user-1/knowledge-graphs/graph-1") && init?.method === "DELETE") {
+    mockState.knowledgeGraphs = [];
     return { ok: true, status: 204 } as Response;
   }
-  if (url.endsWith("/api/users/user-1/documents/existing-document")) {
+  if (url.endsWith("/api/users/user-1/documents/existing-document") && init?.method === "DELETE") {
+    mockState.documents = [];
     return { ok: true, status: 204 } as Response;
   }
   if (url.endsWith("/api/users/user-1/documents") && init?.method === "POST") {
@@ -704,4 +824,11 @@ function blobResponse(body: Blob) {
     status: 200,
     blob: async () => body
   } as Response;
+}
+
+function countFetchCalls(expectedUrl: string) {
+  return vi
+    .mocked(fetch)
+    .mock.calls.filter(([requestInput, init]) => String(requestInput) === expectedUrl && !init?.method)
+    .length;
 }

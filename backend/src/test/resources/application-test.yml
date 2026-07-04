@@ -1,0 +1,32 @@
+spring:
+  ai:
+    model:
+      chat: none
+      audio:
+        speech: none
+        transcription: none
+      image: none
+      embedding: none
+      moderation: none
+  datasource:
+    url: jdbc:h2:mem:eduspark_agent;MODE=MySQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  flyway:
+    enabled: true
+  main:
+    banner-mode: "off"
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+
+agent:
+  planner:
+    mode: mock
+
+auth:
+  jwt:
+    secret: eduspark-test-secret-key-with-at-least-thirty-two-bytes
+    ttl-seconds: 86400
