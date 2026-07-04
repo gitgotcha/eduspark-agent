@@ -29,6 +29,7 @@ export function WorkspaceShell({
     { value: "workspace", label: "工作台首页" },
     { value: "knowledge-graph", label: "知识图谱" },
     { value: "worksheet", label: "练习卷工作区" },
+    { value: "wrong-questions", label: "错题本" },
     { value: "history", label: "历史与回放" },
     { value: "profile", label: "个人中心" }
   ];

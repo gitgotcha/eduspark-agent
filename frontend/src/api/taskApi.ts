@@ -99,6 +99,15 @@ export interface WorksheetDetail {
   updatedAt: string;
 }
 
+export interface WorksheetListItem {
+  id: string;
+  taskId: string;
+  title: string;
+  status: "PENDING" | "COMPLETED" | "FAILED";
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface WorksheetAnswerInput {
   questionId: string;
   answer: string;
@@ -404,6 +413,18 @@ export async function createWorksheet(
   }
 
   return response.json() as Promise<WorksheetCreateResponse>;
+}
+
+export async function listWorksheets(session: AuthSession, limit = 12): Promise<WorksheetListItem[]> {
+  const response = await fetch(`${API_BASE_URL}/api/users/${session.userId}/worksheets?limit=${limit}`, {
+    headers: authHeader(session)
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, `List worksheets failed: ${response.status}`));
+  }
+
+  return response.json() as Promise<WorksheetListItem[]>;
 }
 
 export async function getWorksheet(
