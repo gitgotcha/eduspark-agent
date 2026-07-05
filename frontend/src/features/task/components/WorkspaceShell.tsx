@@ -27,6 +27,7 @@ export function WorkspaceShell({
 }: WorkspaceShellProps) {
   const views: Array<{ value: WorkspaceView; label: string }> = [
     { value: "workspace", label: "工作台首页" },
+    { value: "documents", label: "资料中心" },
     { value: "knowledge-graph", label: "知识图谱" },
     { value: "worksheet", label: "练习卷工作区" },
     { value: "wrong-questions", label: "错题本" },

@@ -215,13 +215,17 @@ describe("TaskConsolePage", () => {
     });
 
     expect(screen.getAllByText("lesson.txt").length).toBeGreaterThan(0);
-    expect(screen.getByText("课堂材料：比例应用题。")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "资料中心" }));
+    expect(screen.getAllByRole("heading", { name: "资料中心" }).length).toBeGreaterThan(0);
+    expect(await screen.findByText("课堂材料：比例应用题。")).toBeInTheDocument();
   });
 
   it("loads and deletes documents in document center", async () => {
     render(<TaskConsolePage />);
 
     await login();
+    await userEvent.click(screen.getByRole("button", { name: "资料中心" }));
+    expect(screen.getAllByRole("heading", { name: "资料中心" }).length).toBeGreaterThan(0);
     expect(await screen.findByText("existing.txt")).toBeInTheDocument();
     expect(screen.getByText("Existing parsed material.")).toBeInTheDocument();
 
@@ -447,6 +451,10 @@ describe("TaskConsolePage", () => {
     expect(screen.getByRole("heading", { name: "练习卷工作区" })).toBeInTheDocument();
     expect(screen.getByText("teacher")).toBeInTheDocument();
 
+    await userEvent.click(screen.getByRole("button", { name: "资料中心" }));
+    expect(screen.getAllByRole("heading", { name: "资料中心" }).length).toBeGreaterThan(0);
+    expect(screen.getByText("teacher")).toBeInTheDocument();
+
     await userEvent.click(screen.getByRole("button", { name: "知识图谱" }));
     expect(screen.getByRole("heading", { name: "知识图谱专栏" })).toBeInTheDocument();
     expect(screen.getByLabelText("知识图谱画布")).toBeInTheDocument();
@@ -472,6 +480,55 @@ describe("TaskConsolePage", () => {
         })
       );
     });
+  });
+
+  it("changes password from profile page", async () => {
+    render(<TaskConsolePage />);
+
+    await login();
+    await userEvent.click(screen.getByRole("button", { name: "个人中心" }));
+    await userEvent.type(screen.getByLabelText("当前密码"), "secret123");
+    await userEvent.type(screen.getByLabelText("新密码"), "secret456");
+    await userEvent.type(screen.getByLabelText("确认新密码"), "secret456");
+    await userEvent.click(screen.getByRole("button", { name: "更新密码" }));
+
+    await waitFor(() => {
+      expect(fetch).toHaveBeenCalledWith(
+        "http://localhost:8080/api/users/user-1/auth/change-password",
+        expect.objectContaining({
+          method: "POST",
+          headers: expect.objectContaining({
+            Authorization: "Bearer token-1",
+            "Content-Type": "application/json"
+          }),
+          body: JSON.stringify({ oldPassword: "secret123", newPassword: "secret456" })
+        })
+      );
+    });
+    expect(await screen.findByText("密码已更新，下次登录请使用新密码。")).toBeInTheDocument();
+  });
+
+  it("blocks short passwords before authentication", async () => {
+    render(<TaskConsolePage />);
+
+    await userEvent.type(screen.getByLabelText("用户名"), "teacher");
+    await userEvent.type(screen.getByLabelText("密码"), "12345");
+    await userEvent.type(
+      screen.getByLabelText("验证码输入"),
+      screen.getByLabelText("验证码").textContent ?? ""
+    );
+    screen.getByLabelText("密码").removeAttribute("minlength");
+    await userEvent.click(
+      screen
+        .getAllByRole("button")
+        .find((button) => button.getAttribute("type") === "submit" && /登录/.test(button.textContent ?? ""))!
+    );
+
+    expect(screen.getByText("密码至少需要 6 位。")).toBeInTheDocument();
+    expect(fetch).not.toHaveBeenCalledWith(
+      "http://localhost:8080/api/auth/login",
+      expect.anything()
+    );
   });
 
   it("shows a workspace overview strip on the home dashboard", async () => {
@@ -615,6 +672,9 @@ async function mockFetch(input: RequestInfo | URL, init?: RequestInit) {
   const url = String(input);
   if (url.endsWith("/api/auth/login") || url.endsWith("/api/auth/register")) {
     return jsonResponse({ userId: "user-1", username: "teacher", token: "token-1" });
+  }
+  if (url.endsWith("/api/users/user-1/auth/change-password")) {
+    return { ok: true, status: 204 } as Response;
   }
   if (url.endsWith("/api/users/user-1/documents") && init?.method !== "POST") {
     return jsonResponse(mockState.documents);

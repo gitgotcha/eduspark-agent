@@ -204,7 +204,17 @@ export interface TaskStreamPayload {
   message?: string;
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
+const API_BASE_URL = resolveApiBaseUrl(import.meta.env.VITE_API_BASE_URL);
+
+export function resolveApiBaseUrl(value: string | undefined) {
+  const rawValue = value?.trim();
+  if (!rawValue) {
+    return "http://localhost:8080";
+  }
+
+  const withoutTrailingSlash = rawValue.replace(/\/+$/, "");
+  return withoutTrailingSlash === "/api" ? "" : withoutTrailingSlash;
+}
 
 export async function login(username: string, password: string): Promise<AuthSession> {
   return authenticate("/api/auth/login", username, password);
@@ -212,6 +222,25 @@ export async function login(username: string, password: string): Promise<AuthSes
 
 export async function register(username: string, password: string): Promise<AuthSession> {
   return authenticate("/api/auth/register", username, password);
+}
+
+export async function changePassword(
+  session: AuthSession,
+  oldPassword: string,
+  newPassword: string
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/api/users/${session.userId}/auth/change-password`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeader(session)
+    },
+    body: JSON.stringify({ oldPassword, newPassword })
+  });
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, `Change password failed: ${response.status}`));
+  }
 }
 
 export async function createTask(

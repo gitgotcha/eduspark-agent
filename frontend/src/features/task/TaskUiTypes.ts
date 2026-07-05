@@ -7,6 +7,7 @@ export interface ConsoleLine {
 
 export type WorkspaceView =
   | "workspace"
+  | "documents"
   | "knowledge-graph"
   | "worksheet"
   | "wrong-questions"

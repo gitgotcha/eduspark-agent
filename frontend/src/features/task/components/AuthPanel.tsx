@@ -120,7 +120,8 @@ export function AuthPanel({
             type="password"
             value={password}
             onChange={(event) => onPasswordChange(event.target.value)}
-            placeholder="输入密码"
+            placeholder="至少 6 位密码"
+            minLength={6}
             autoComplete={authMode === "login" ? "current-password" : "new-password"}
           />
         </div>

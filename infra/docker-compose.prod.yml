@@ -1,0 +1,31 @@
+services:
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: eduspark-backend
+    env_file:
+      - .env
+    environment:
+      SERVER_PORT: 8080
+    expose:
+      - "8080"
+    restart: unless-stopped
+    volumes:
+      - eduspark-uploads:/app/var/uploads/documents
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api
+    container_name: eduspark-frontend
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    restart: unless-stopped
+
+volumes:
+  eduspark-uploads:
