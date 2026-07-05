@@ -22,13 +22,14 @@ Copy `infra/.env.example` to `infra/.env` and fill in:
 - `SPRING_DATASOURCE_PASSWORD`
 - `AUTH_JWT_SECRET`
 - `DASHSCOPE_API_KEY`
+- `QWEN_API_KEY` can be used as a local alias if your IDE run config already uses that name
 
 Recommended values:
 
 - `SPRING_AI_OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode`
 - `SPRING_AI_OPENAI_CHAT_MODEL=qwen-plus`
 - `SPRING_AI_OPENAI_EMBEDDING_MODEL=text-embedding-v4`
-- `AGENT_PLANNER_MODE=spring-ai`
+- `AGENT_PLANNER_MODE=spring-ai` when the AI key is configured, otherwise keep the default `mock`
 - `VITE_API_BASE_URL=/api` during frontend build
 
 ## Run
