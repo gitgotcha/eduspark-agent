@@ -4,3 +4,8 @@ frontend/node_modules/
 frontend/vite-dev*.log
 node_modules/
 .superpowers/
+.env
+.env.*
+backend/.env
+frontend/.env
+infra/.env

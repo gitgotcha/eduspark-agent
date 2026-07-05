@@ -2,6 +2,7 @@ import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { LogOut } from "lucide-react";
 import {
   AuthSession,
+  changePassword,
   deleteDocument,
   EduDocument,
   createWorksheet,
@@ -39,7 +40,6 @@ import {
 } from "../../api/taskApi";
 import { ArtifactGrid } from "./components/ArtifactGrid";
 import { GlassPanel } from "./components/GlassPanel";
-import { DocumentCenterPanel } from "./components/DocumentCenterPanel";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { KnowledgeGraphPanel } from "./components/KnowledgeGraphPanel";
 import { PromptComposer } from "./components/PromptComposer";
@@ -49,6 +49,7 @@ import { WorkspaceShell } from "./components/WorkspaceShell";
 import { WorksheetPanel } from "./components/WorksheetPanel";
 import { ConsoleLine, WorkspaceView } from "./TaskUiTypes";
 import { AuthPage } from "./pages/AuthPage";
+import { DocumentCenterPage } from "./pages/DocumentCenterPage";
 import { KnowledgeGraphPage } from "./pages/KnowledgeGraphPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { ProfilePage } from "./pages/ProfilePage";
@@ -66,6 +67,12 @@ export function TaskConsolePage() {
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [oldPassword, setOldPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordChangeMessage, setPasswordChangeMessage] = useState<string | null>(null);
+  const [passwordChangeError, setPasswordChangeError] = useState<string | null>(null);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [captchaCode, setCaptchaCode] = useState(() => createCaptchaCode());
   const [captchaInput, setCaptchaInput] = useState("");
   const [authError, setAuthError] = useState<string | null>(null);
@@ -121,10 +128,7 @@ export function TaskConsolePage() {
 
   useEffect(() => {
     if (session) {
-      void refreshDocuments(session);
-      void refreshHistory(session);
-      void refreshKnowledgeGraph(session);
-      void refreshKnowledgeGraphRecords(session);
+      startWorkspaceRefresh(session);
     }
   }, [session]);
 
@@ -163,6 +167,10 @@ export function TaskConsolePage() {
     if (!trimmedUsername || !password) {
       return;
     }
+    if (password.length < 6) {
+      setAuthError("密码至少需要 6 位。");
+      return;
+    }
     if (captchaInput.trim().toUpperCase() !== captchaCode) {
       setAuthError("验证码不正确，请重试。");
       setCaptchaCode(createCaptchaCode());
@@ -180,10 +188,7 @@ export function TaskConsolePage() {
       localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(nextSession));
       setSession(nextSession);
       setActiveView("workspace");
-      void refreshDocuments(nextSession);
-      void refreshHistory(nextSession);
-      void refreshKnowledgeGraph(nextSession);
-      void refreshKnowledgeGraphRecords(nextSession);
+      startWorkspaceRefresh(nextSession);
       setPassword("");
       setCaptchaCode(createCaptchaCode());
       setCaptchaInput("");
@@ -375,10 +380,10 @@ export function TaskConsolePage() {
     try {
       await resolveWrongQuestion(session, wrongQuestionId);
       if (worksheet) {
-        await refreshWrongQuestions(session, worksheet.id);
+        void refreshWrongQuestions(session, worksheet.id);
       }
       setWrongQuestionBank((current) => current.filter((item) => item.id !== wrongQuestionId));
-      await refreshWrongQuestionBank(session);
+      void refreshWrongQuestionBank(session);
       appendLine("错题已标记为已解决", "success", "错题");
     } catch (error) {
       const message = error instanceof Error ? error.message : "标记错题失败";
@@ -437,7 +442,44 @@ export function TaskConsolePage() {
     setIsLoadingWrongQuestions(false);
     setIsRetryingWrongQuestions(false);
     setCaptchaInput("");
+    setOldPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setPasswordChangeMessage(null);
+    setPasswordChangeError(null);
     setKnowledgeGraphRecordTitle("当前图谱快照");
+  }
+
+  async function handleChangePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session) {
+      return;
+    }
+    if (oldPassword.length < 6 || newPassword.length < 6) {
+      setPasswordChangeError("密码至少需要 6 位。");
+      setPasswordChangeMessage(null);
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordChangeError("两次输入的新密码不一致。");
+      setPasswordChangeMessage(null);
+      return;
+    }
+
+    setIsChangingPassword(true);
+    setPasswordChangeError(null);
+    setPasswordChangeMessage(null);
+    try {
+      await changePassword(session, oldPassword, newPassword);
+      setOldPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordChangeMessage("密码已更新，下次登录请使用新密码。");
+    } catch (error) {
+      setPasswordChangeError(error instanceof Error ? error.message : "修改密码失败");
+    } finally {
+      setIsChangingPassword(false);
+    }
   }
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -542,6 +584,13 @@ export function TaskConsolePage() {
     }
   }
 
+  function startWorkspaceRefresh(currentSession: AuthSession) {
+    void refreshDocuments(currentSession);
+    void refreshHistory(currentSession);
+    void refreshKnowledgeGraph(currentSession);
+    void refreshKnowledgeGraphRecords(currentSession);
+  }
+
   async function handleCreateKnowledgeGraphRecord() {
     if (!session) {
       return;
@@ -560,7 +609,7 @@ export function TaskConsolePage() {
         documentIds
       });
       setSelectedKnowledgeGraphRecordId(created.graphId);
-      await refreshKnowledgeGraphRecords(session);
+      void refreshKnowledgeGraphRecords(session);
       appendLine(`图谱记录已保存 ${created.graphId}`, "success", "图谱");
     } catch (error) {
       setKnowledgeGraphRecordsError(error instanceof Error ? error.message : "保存图谱记录失败");
@@ -579,7 +628,7 @@ export function TaskConsolePage() {
       if (selectedKnowledgeGraphRecordId === graphId) {
         setSelectedKnowledgeGraphRecordId(null);
       }
-      await refreshKnowledgeGraphRecords(session);
+      void refreshKnowledgeGraphRecords(session);
       appendLine(`图谱记录已删除 ${graphId}`, "success", "图谱");
     } catch (error) {
       setKnowledgeGraphRecordsError(error instanceof Error ? error.message : "删除图谱记录失败");
@@ -632,9 +681,9 @@ export function TaskConsolePage() {
     try {
       await deleteDocument(session, documentId);
       setDocuments((current) => current.filter((document) => document.id !== documentId));
-      await refreshDocuments(session);
+      void refreshDocuments(session);
       void refreshKnowledgeGraph(session);
-      await refreshKnowledgeGraphRecords(session);
+      void refreshKnowledgeGraphRecords(session);
     } catch (error) {
       setDocumentsError(error instanceof Error ? error.message : "删除资料失败");
     }
@@ -807,18 +856,19 @@ export function TaskConsolePage() {
                   </div>
                 </div>
               </GlassPanel>
-              <DocumentCenterPanel
-                documents={documents}
-                isLoading={isLoadingDocuments}
-                error={documentsError}
-                onDelete={handleDeleteDocument}
-                onReindex={handleReindexDocument}
-              />
             </div>
           </div>
         </WorkspacePage>
+      ) : activeView === "documents" ? (
+        <DocumentCenterPage
+          documents={documents}
+          isLoading={isLoadingDocuments}
+          error={documentsError}
+          onDelete={handleDeleteDocument}
+          onReindex={handleReindexDocument}
+        />
       ) : activeView === "knowledge-graph" ? (
-      <KnowledgeGraphPage
+        <KnowledgeGraphPage
         graph={knowledgeGraph}
         records={knowledgeGraphRecords}
         selectedRecordId={selectedKnowledgeGraphRecordId}
@@ -954,6 +1004,63 @@ export function TaskConsolePage() {
                   退出登录
                 </button>
               </div>
+            </GlassPanel>
+            <GlassPanel className="p-4">
+              <form className="grid gap-3" onSubmit={handleChangePassword}>
+                <div>
+                  <p className="text-sm font-semibold text-slate-950">修改密码</p>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    新密码至少 6 位，修改后当前会话仍可继续使用。
+                  </p>
+                </div>
+                <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+                  当前密码
+                  <input
+                    className="liquid-glass h-10 rounded-lg px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+                    type="password"
+                    value={oldPassword}
+                    onChange={(event) => setOldPassword(event.target.value)}
+                    autoComplete="current-password"
+                  />
+                </label>
+                <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+                  新密码
+                  <input
+                    className="liquid-glass h-10 rounded-lg px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+                    type="password"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                    autoComplete="new-password"
+                  />
+                </label>
+                <label className="grid gap-1.5 text-sm font-medium text-slate-700">
+                  确认新密码
+                  <input
+                    className="liquid-glass h-10 rounded-lg px-3 text-sm outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    autoComplete="new-password"
+                  />
+                </label>
+                {passwordChangeError ? (
+                  <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {passwordChangeError}
+                  </p>
+                ) : null}
+                {passwordChangeMessage ? (
+                  <p className="rounded-lg border border-green-100 bg-green-50 px-3 py-2 text-sm text-green-700">
+                    {passwordChangeMessage}
+                  </p>
+                ) : null}
+                <button
+                  className="inline-flex h-10 items-center justify-center rounded-lg bg-slate-950 px-4 text-sm font-semibold text-white shadow-lg shadow-slate-950/10 transition hover:-translate-y-0.5 disabled:translate-y-0 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  type="submit"
+                  disabled={isChangingPassword || !oldPassword || !newPassword || !confirmPassword}
+                >
+                  {isChangingPassword ? "更新中..." : "更新密码"}
+                </button>
+              </form>
             </GlassPanel>
           </div>
         </ProfilePage>

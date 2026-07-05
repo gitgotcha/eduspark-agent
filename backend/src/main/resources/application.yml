@@ -12,7 +12,7 @@ spring:
       moderation: ${SPRING_AI_MODEL_MODERATION:none}
     openai:
       base-url: ${SPRING_AI_OPENAI_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode}
-      api-key: ${DASHSCOPE_API_KEY:sk-33bbc466ea8144e3b3697fd743c1d666}
+      api-key: ${DASHSCOPE_API_KEY:${QWEN_API_KEY:${SPRING_AI_OPENAI_API_KEY:}}}
       chat:
         options:
           model: ${SPRING_AI_OPENAI_CHAT_MODEL:qwen-plus}
@@ -21,9 +21,9 @@ spring:
         options:
           model: ${SPRING_AI_OPENAI_EMBEDDING_MODEL:text-embedding-v4}
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:mysql://rm-bp11lptui94ztuts20o.mysql.rds.aliyuncs.com:3306/eduspark_agent?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai}
-    username: ${SPRING_DATASOURCE_USERNAME:eduspark}
-    password: ${SPRING_DATASOURCE_PASSWORD:eduSpark001}
+    url: ${SPRING_DATASOURCE_URL:}
+    username: ${SPRING_DATASOURCE_USERNAME:}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
     hikari:
       maximum-pool-size: 5
       minimum-idle: 1
@@ -36,7 +36,7 @@ spring:
   flyway:
     enabled: true
 server:
-  port: 8080
+  port: ${SERVER_PORT:8080}
 
 mybatis-plus:
   configuration:
@@ -44,8 +44,8 @@ mybatis-plus:
 
 agent:
   planner:
-    mode: ${AGENT_PLANNER_MODE:spring-ai}
+    mode: ${AGENT_PLANNER_MODE:mock}
 auth:
   jwt:
-    secret: ${AUTH_JWT_SECRET:eduspark-local-dev-secret-please-change-123456}
+    secret: ${AUTH_JWT_SECRET:}
     ttl-seconds: ${AUTH_JWT_TTL_SECONDS:86400}
